@@ -1,0 +1,62 @@
+
+# app.R
+
+library(shiny)
+library(leaflet)
+library(dplyr)
+library(sf)
+library(bcdata)
+
+# Define UI for the app
+ui <- fluidPage(
+  titlePanel("BC Data Catalogue Map"),
+  sidebarLayout(
+    sidebarPanel(
+      # Optionally add filters or controls here
+    ),
+    mainPanel(
+      leafletOutput("map"),
+      verbatimTextOutput("stats")
+    )
+  )
+)
+
+# Define server logic
+server <- function(input, output, session) {
+  # Define the dataset resource ID from the BC Data Catalogue
+  resource_id <- "WHSE_FOREST_TENURE.BCTS_OPERATING_AREAS_SP" # Example resource ID
+  
+  # Fetch the data from the BC Data Catalogue
+  data <- bcdc_get_data(resource_id)
+  
+  # Check data structure
+  print(names(data)) # Identify the available column names
+  
+  # Modify summarise function based on correct column name found
+  summary_stats <- data %>% 
+    summarise(
+      count = n(),
+      mean_area = mean(FEATURE_AREA_SQM, na.rm = TRUE) # Update with the correct column name
+    )
+  
+  # Render the map
+  output$map <- renderLeaflet({
+    # Convert to sf object and transform to WGS84 (longitude-latitude)
+    data_sf <- st_as_sf(data) %>%
+      st_transform(crs = 4326) # Transform to WGS84 for Leaflet
+    
+    # Create a basic map with Leaflet
+    leaflet(data_sf) %>%
+      addTiles() %>%
+      addPolygons(fillColor = "blue", color = "black", weight = 1, opacity = 0.5)
+  })
+  
+  # Render statistics
+  output$stats <- renderPrint({
+    summary_stats
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
+
