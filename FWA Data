@@ -1,0 +1,72 @@
+library(shiny)
+library(leaflet)
+library(sf)
+library(dplyr)
+library(bcdata)
+library(bcmaps)
+
+# Define UI for the app
+ui <- fluidPage(
+  titlePanel("BC Watershed Search"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      textInput("watershed", "Enter Watershed Name:", value = ""),
+      actionButton("search", "Search")
+    ),
+    
+    mainPanel(
+      leafletOutput("map")
+    )
+  )
+)
+
+# Define server logic
+server <- function(input, output, session) {
+  
+  # Initialize map
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = -123.3656, lat = 54.5, zoom = 6)  # Center on BC
+  })
+  
+  # Observe the search button
+  observeEvent(input$search, {
+    req(input$watershed)
+    
+    # Query the watershed data from the BC Data Catalogue
+    selected_watershed <- bcdc_query_geodata("WHSE_BASEMAPPING.FWA_ASSESSMENT_WATERSHEDS_POLY") %>%
+      filter(GNIS_NAME_1 == input$watershed) %>%
+      collect() %>%
+      st_transform(crs = 4326)  # Transform to WGS84 for Leaflet compatibility
+    
+    # If watershed found, update the map
+    if (nrow(selected_watershed) > 0) {
+      # Get the centroid of the selected watershed
+      centroid <- st_centroid(st_geometry(selected_watershed))
+      lng <- st_coordinates(centroid)[, 1]
+      lat <- st_coordinates(centroid)[, 2]
+      
+      # Update the map
+      leafletProxy("map") %>%
+        clearMarkers() %>%
+        clearShapes() %>%
+        addPolygons(
+          data = selected_watershed, 
+          color = "#1f78b4", 
+          weight = 2, 
+          fillColor = "#1f78b4", 
+          fillOpacity = 0.5,
+          highlightOptions = highlightOptions(color = "white", weight = 2, bringToFront = TRUE),
+          popup = ~GNIS_NAME_1  # Add popup with GNIS_NAME_1
+        ) %>%
+        setView(lng = lng, lat = lat, zoom = 10)  # Zoom to the watershed
+    } else {
+      showNotification("Watershed not found. Please try another name.", type = "error")
+    }
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
